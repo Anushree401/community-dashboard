@@ -1,0 +1,24 @@
+Phase 1 — Foundation
+    Initialize both applications, configure TypeScript and environment variables, start the Vite frontend and Express backend, implement /api/health, and verify Firebase Admin and Firestore connectivity.
+    Acceptance: both servers start; the API returns a valid health response; Firestore connectivity is verified against the intended Firebase project.
+
+Phase 2 — Authentication and access control
+    Registration, login, profile management, token verification, session expiration, community roles, permission middleware, and denied-access tests.
+
+Phase 3 — Communities and memberships
+    Community creation, discovery, search, categories, public/private membership, join requests, approvals, member management, and moderator permissions.
+
+Phase 4 — Discussions and announcements
+    Posts, comments, likes, ownership enforcement, moderation actions, announcements, and notification workflows.
+
+Phase 5 — Events
+    Event creation, editing, RSVP management, participation tracking, event access rules, and date validation.
+
+Phase 6 — Analytics and gamification
+    Activity instrumentation, member growth, engagement metrics, retention, leaderboards, point ledgers, badges, and duplicate-award prevention.
+
+Phase 7 — Frontend integration and polish
+    Member and administration dashboards, responsive navigation, charts, loading and empty states, accessibility, and appropriate realtime updates.
+
+Phase 8 — Verification and release readiness
+    Unit and integration tests, security tests, Firestore Rules validation, query/index review, performance testing, deployment documentation, and a final limitations checklist.

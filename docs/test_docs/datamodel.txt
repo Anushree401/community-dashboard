@@ -1,0 +1,23 @@
+users: User profiles and account metadata
+
+communities: Community details and visibility
+
+memberships: Membership status and community-specific roles
+
+posts: Community discussions
+
+comments: Replies to posts
+
+events: Event information
+
+eventRsvps: Event participation
+
+announcements: Community announcements
+
+engagementActivities: Auditable interaction records
+
+pointLedger: Idempotent engagement-point awards
+
+badges: Badge definitions and achievements
+
+Document IDs, composite indexes, transaction boundaries, pagination, and Firestore Rules will be decided based on the actual queries and permissions. We'll avoid storing an entire community's members or posts inside one document.

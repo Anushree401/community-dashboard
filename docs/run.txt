@@ -1,0 +1,8 @@
+frontend: 
+cd "/media/anushreebalaji/skynet/Psnal/SIDE GIGS/PROJECTS/CEH/ceh/frontend"
+node node_modules/vite/bin/vite.js
+
+backend:
+cd "/media/anushreebalaji/skynet/Psnal/SIDE GIGS/PROJECTS/CEH/ceh/backend"
+node node_modules/tsx/dist/cli.mjs watch src/server.ts
+

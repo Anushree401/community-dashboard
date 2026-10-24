@@ -1,0 +1,15 @@
+Frontend: React, Vite, TypeScript, Tailwind CSS, React Router, and Recharts.
+
+Backend: Node.js, Express, and TypeScript, with modular routes, controllers, services, middleware, and schemas.
+
+Identity: Firebase Authentication handles user sign-in. The backend verifies Firebase ID tokens using the Firebase Admin SDK.
+
+Authorization: Community membership and role permissions are checked on the server. A client-supplied role or administrator flag is never trusted.
+
+Database: Cloud Firestore stores communities, memberships, discussions, events, announcements, and engagement records.
+
+Realtime: Start with Firestore-backed data and explicit refreshes. Add authenticated SSE or another suitable realtime mechanism when the initial workflows are stable.
+
+Testing: Vitest, React Testing Library, Supertest, and ESLint/Prettier.
+
+Trust boundary: the browser is untrusted. All privileged application writes should pass through the Express API. Firestore Security Rules must also prevent unauthorized direct client access, and Firebase Admin SDK operations must enforce application authorization explicitly because Admin SDK access bypasses Firestore Security Rules.
