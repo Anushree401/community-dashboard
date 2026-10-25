@@ -2,6 +2,7 @@
 import { Router, type Response } from "express";
 import { z } from "zod";
 import {
+    ActivityType,
     ContentStatus,
     MembershipRole,
     MembershipStatus,
@@ -272,7 +273,14 @@ postRouter.post("/community/:communityId", async (req, res) => {
             updatedAt: true,
         },
     });
-
+    await prisma.activity.create({
+        data: {
+            communityId,
+            userId: req.auth.userId,
+            eventType: ActivityType.POST_CREATED,
+            postId: post.id,
+        },
+    });
     return res.status(201).json({ post });
 });
 
@@ -543,7 +551,15 @@ postRouter.post("/:postId/comments", async (req, res) => {
             },
         },
     });
-
+    await prisma.activity.create({
+        data: {
+            communityId: post.communityId,
+            userId: req.auth.userId,
+            eventType: ActivityType.COMMENT_CREATED,
+            postId: post.id,
+            commentId: comment.id,
+        },
+    });
     return res.status(201).json({ comment });
 });
 
@@ -783,7 +799,16 @@ postRouter.put("/:postId/reaction", async (req, res) => {
     if (!access) {
         return sendError(res, 403, "Active community membership required");
     }
-
+    const existingReaction = await prisma.postReaction.findUnique({
+        where: {
+            postId_userId_reactionType: {
+                postId,
+                userId: req.auth.userId,
+                reactionType: parsed.data.reactionType,
+            },
+        },
+        select: { postId: true },
+    });
     const reaction = await prisma.postReaction.upsert({
         where: {
             postId_userId_reactionType: {
@@ -805,7 +830,16 @@ postRouter.put("/:postId/reaction", async (req, res) => {
             createdAt: true,
         },
     });
-
+    if (!existingReaction) {
+        await prisma.activity.create({
+            data: {
+                communityId: post.communityId,
+                userId: req.auth.userId,
+                eventType: ActivityType.REACTION_ADDED,
+                postId: post.id,
+            },
+        });
+    }
     return res.json({ reaction });
 });
 

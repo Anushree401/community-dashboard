@@ -52,3 +52,44 @@ export async function sendVerificationOtp(
 export async function verifySmtpConnection(): Promise<void> {
     await transporter.verify();
 }
+
+export async function sendPasswordResetEmail(
+    recipient: string,
+    token: string,
+): Promise<void> {
+    const resetUrl = new URL(
+        "/reset-password",
+        process.env.FRONTEND_URL || "http://localhost:5173",
+    );
+
+    resetUrl.searchParams.set("email", recipient);
+    resetUrl.searchParams.set("token", token);
+
+    await transporter.sendMail({
+        from,
+        to: recipient,
+        subject: "Reset your Community Engagement Hub password",
+        text: [
+            "We received a request to reset your password.",
+            "",
+            `Use this link to reset it: ${resetUrl.toString()}`,
+            "",
+            "This link expires in 30 minutes and can only be used once.",
+            "If you did not request a password reset, ignore this email.",
+        ].join("\n"),
+        html: `
+            <div style="font-family: Arial, sans-serif; max-width: 480px; margin: auto;">
+                <h2>Reset your password</h2>
+                <p>We received a request to reset your Community Engagement Hub password.</p>
+                <p>
+                    <a href="${resetUrl.toString()}"
+                       style="display:inline-block;padding:12px 18px;background:#7900d9;color:#fff;text-decoration:none;border-radius:8px;">
+                        Reset password
+                    </a>
+                </p>
+                <p>This link expires in 30 minutes and can only be used once.</p>
+                <p>If you did not request this, you can ignore this email.</p>
+            </div>
+        `,
+    });
+}

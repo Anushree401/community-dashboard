@@ -1,430 +1,446 @@
 generator client {
-    provider = "prisma-client-js"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-    provider = "postgresql"
+  provider = "postgresql"
 }
 
 enum UserStatus {
-    ACTIVE
-    SUSPENDED
-    PENDING_VERIFICATION
+  ACTIVE
+  SUSPENDED
+  PENDING_VERIFICATION
 }
 
 enum CommunityVisibility {
-    PUBLIC
-    PRIVATE
+  PUBLIC
+  PRIVATE
 }
 
 enum MembershipRole {
-    MEMBER
-    MODERATOR
-    COMMUNITY_ADMIN
+  MEMBER
+  MODERATOR
+  COMMUNITY_ADMIN
 }
 
 enum MembershipStatus {
-    ACTIVE
-    PENDING
-    BANNED
+  ACTIVE
+  PENDING
+  BANNED
 }
 
 enum ContentStatus {
-    PUBLISHED
-    HIDDEN
-    DELETED
+  PUBLISHED
+  HIDDEN
+  DELETED
 }
 
 enum AnnouncementStatus {
-    DRAFT
-    PUBLISHED
-    ARCHIVED
+  DRAFT
+  PUBLISHED
+  ARCHIVED
 }
 
 enum ActivityType {
-    POST_CREATED
-    COMMENT_CREATED
-    REACTION_ADDED
-    ANNOUNCEMENT_READ
-    LOGIN
+  POST_CREATED
+  COMMENT_CREATED
+  REACTION_ADDED
+  ANNOUNCEMENT_READ
+  LOGIN
 }
 
 enum ReactionType {
-    LIKE
+  LIKE
 }
 
 enum PointReason {
-    POST_CREATED
-    COMMENT_CREATED
-    REACTION_RECEIVED
-    ADMIN_ADJUSTMENT
-    REVERSAL
+  POST_CREATED
+  COMMENT_CREATED
+  REACTION_RECEIVED
+  ADMIN_ADJUSTMENT
+  REVERSAL
 }
 
 model User {
-    id           String     @id @default(uuid()) @db.Uuid
-    email        String     @unique @db.VarChar(320)
-    passwordHash String     @map("password_hash")
-    displayName  String     @map("display_name") @db.VarChar(80)
-    avatarUrl    String?    @map("avatar_url")
-    bio          String?    @db.VarChar(500)
-    status       UserStatus @default(ACTIVE)
-    createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
-    updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
-    lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
+  id           String     @id @default(uuid()) @db.Uuid
+  email        String     @unique @db.VarChar(320)
+  passwordHash String     @map("password_hash")
+  displayName  String     @map("display_name") @db.VarChar(80)
+  avatarUrl    String?    @map("avatar_url")
+  bio          String?    @db.VarChar(500)
+  status       UserStatus @default(ACTIVE)
+  createdAt    DateTime   @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime   @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt  DateTime?  @map("last_login_at") @db.Timestamptz(6)
 
-    sessions                     Session[]
-    emailVerificationChallenges  EmailVerificationChallenge[]
-    sentCommunityInvitations     CommunityInvitation[]        @relation("InvitationSender")
-    receivedCommunityInvitations CommunityInvitation[]        @relation("InvitationRecipient")
-    createdCommunities           Community[]                  @relation("CommunityCreator")
-    memberships                  CommunityMembership[]
-    createdTopics                Topic[]                      @relation("TopicCreator")
-    posts                        Post[]                       @relation("PostAuthor")
-    comments                     Comment[]                    @relation("CommentAuthor")
-    deletedPosts                 Post[]                       @relation("PostDeleter")
-    deletedComments              Comment[]                    @relation("CommentDeleter")
-    reactions                    PostReaction[]
-    announcements                Announcement[]               @relation("AnnouncementAuthor")
-    announcementReads            AnnouncementRead[]
-    activities                   Activity[]
-    pointTransactions            PointTransaction[]           @relation("PointRecipient")
-    createdPointRecords          PointTransaction[]           @relation("PointCreator")
-    awardedBadges                UserBadge[]                  @relation("BadgeRecipient")
-    grantedBadges                UserBadge[]                  @relation("BadgeGrantor")
-    notifications                Notification[]
-    auditLogs                    AuditLog[]                   @relation("AuditActor")
+  sessions                     Session[]
+  emailVerificationChallenges  EmailVerificationChallenge[]
+  passwordResetTokens          PasswordResetToken[]
+  sentCommunityInvitations     CommunityInvitation[]        @relation("InvitationSender")
+  receivedCommunityInvitations CommunityInvitation[]        @relation("InvitationRecipient")
+  createdCommunities           Community[]                  @relation("CommunityCreator")
+  memberships                  CommunityMembership[]
+  createdTopics                Topic[]                      @relation("TopicCreator")
+  posts                        Post[]                       @relation("PostAuthor")
+  comments                     Comment[]                    @relation("CommentAuthor")
+  deletedPosts                 Post[]                       @relation("PostDeleter")
+  deletedComments              Comment[]                    @relation("CommentDeleter")
+  reactions                    PostReaction[]
+  announcements                Announcement[]               @relation("AnnouncementAuthor")
+  announcementReads            AnnouncementRead[]
+  activities                   Activity[]
+  pointTransactions            PointTransaction[]           @relation("PointRecipient")
+  createdPointRecords          PointTransaction[]           @relation("PointCreator")
+  awardedBadges                UserBadge[]                  @relation("BadgeRecipient")
+  grantedBadges                UserBadge[]                  @relation("BadgeGrantor")
+  notifications                Notification[]
+  auditLogs                    AuditLog[]                   @relation("AuditActor")
 
-    @@index([status, createdAt])
-    @@map("users")
+  @@index([status, createdAt])
+  @@map("users")
 }
 
 model Session {
-    id         String    @id @default(uuid()) @db.Uuid
-    userId     String    @map("user_id") @db.Uuid
-    tokenHash  String    @unique @map("token_hash")
-    createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
-    expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
-    lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
-    ipAddress  String?   @map("ip_address") @db.Inet
-    userAgent  String?   @map("user_agent")
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  tokenHash  String    @unique @map("token_hash")
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  lastSeenAt DateTime? @map("last_seen_at") @db.Timestamptz(6)
+  ipAddress  String?   @map("ip_address") @db.Inet
+  userAgent  String?   @map("user_agent")
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([userId, expiresAt])
-    @@index([expiresAt])
-    @@map("sessions")
+  @@index([userId, expiresAt])
+  @@index([expiresAt])
+  @@map("sessions")
 }
 
 model Community {
-    id          String              @id @default(uuid()) @db.Uuid
-    name        String              @db.VarChar(120)
-    slug        String              @unique @db.VarChar(140)
-    description String?
-    createdById String              @map("created_by") @db.Uuid
-    visibility  CommunityVisibility @default(PUBLIC)
-    createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
-    updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @db.VarChar(120)
+  slug        String              @unique @db.VarChar(140)
+  description String?
+  createdById String              @map("created_by") @db.Uuid
+  visibility  CommunityVisibility @default(PUBLIC)
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime            @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-    creator       User                  @relation("CommunityCreator", fields: [createdById], references: [id], onDelete: Restrict)
-    memberships   CommunityMembership[]
-    topics        Topic[]
-    posts         Post[]
-    announcements Announcement[]
-    activities    Activity[]
-    pointRecords  PointTransaction[]
-    userBadges    UserBadge[]
-    notifications Notification[]
-    auditLogs     AuditLog[]
-    invitations   CommunityInvitation[]
+  creator       User                  @relation("CommunityCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  memberships   CommunityMembership[]
+  topics        Topic[]
+  posts         Post[]
+  announcements Announcement[]
+  activities    Activity[]
+  pointRecords  PointTransaction[]
+  userBadges    UserBadge[]
+  notifications Notification[]
+  auditLogs     AuditLog[]
+  invitations   CommunityInvitation[]
 
-    @@map("communities")
+  @@map("communities")
 }
 
 model CommunityMembership {
-    communityId String           @map("community_id") @db.Uuid
-    userId      String           @map("user_id") @db.Uuid
-    role        MembershipRole   @default(MEMBER)
-    status      MembershipStatus @default(ACTIVE)
-    joinedAt    DateTime         @default(now()) @map("joined_at") @db.Timestamptz(6)
-    updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
+  communityId String           @map("community_id") @db.Uuid
+  userId      String           @map("user_id") @db.Uuid
+  role        MembershipRole   @default(MEMBER)
+  status      MembershipStatus @default(ACTIVE)
+  joinedAt    DateTime         @default(now()) @map("joined_at") @db.Timestamptz(6)
+  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-    community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@id([communityId, userId])
-    @@index([userId, status])
-    @@index([communityId, status, joinedAt])
-    @@map("community_memberships")
+  @@id([communityId, userId])
+  @@index([userId, status])
+  @@index([communityId, status, joinedAt])
+  @@map("community_memberships")
 }
 
 model Topic {
-    id          String   @id @default(uuid()) @db.Uuid
-    communityId String   @map("community_id") @db.Uuid
-    name        String   @db.VarChar(80)
-    description String?  @db.VarChar(300)
-    createdById String   @map("created_by") @db.Uuid
-    createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  communityId String   @map("community_id") @db.Uuid
+  name        String   @db.VarChar(80)
+  description String?  @db.VarChar(300)
+  createdById String   @map("created_by") @db.Uuid
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    creator   User      @relation("TopicCreator", fields: [createdById], references: [id], onDelete: Restrict)
-    posts     Post[]
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  creator   User      @relation("TopicCreator", fields: [createdById], references: [id], onDelete: Restrict)
+  posts     Post[]
 
-    @@unique([communityId, name])
-    @@unique([id, communityId])
-    @@map("topics")
+  @@unique([communityId, name])
+  @@unique([id, communityId])
+  @@map("topics")
 }
 
 model Post {
-    id             String        @id @default(uuid()) @db.Uuid
-    communityId    String        @map("community_id") @db.Uuid
-    authorId       String        @map("author_id") @db.Uuid
-    topicId        String?       @map("topic_id") @db.Uuid
-    title          String        @db.VarChar(200)
-    body           String
-    status         ContentStatus @default(PUBLISHED)
-    createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-    updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-    editedAt       DateTime?     @map("edited_at") @db.Timestamptz(6)
-    deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz(6)
-    deletedById    String?       @map("deleted_by_id") @db.Uuid
-    deletionReason String?       @map("deletion_reason")
+  id             String        @id @default(uuid()) @db.Uuid
+  communityId    String        @map("community_id") @db.Uuid
+  authorId       String        @map("author_id") @db.Uuid
+  topicId        String?       @map("topic_id") @db.Uuid
+  title          String        @db.VarChar(200)
+  body           String
+  status         ContentStatus @default(PUBLISHED)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  editedAt       DateTime?     @map("edited_at") @db.Timestamptz(6)
+  deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  deletedById    String?       @map("deleted_by_id") @db.Uuid
+  deletionReason String?       @map("deletion_reason")
 
-    community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
-    author    User      @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-    topic     Topic?    @relation(fields: [topicId, communityId], references: [id, communityId], onDelete: Restrict)
-    deletedBy User?     @relation("PostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Restrict)
+  author    User      @relation("PostAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  topic     Topic?    @relation(fields: [topicId, communityId], references: [id, communityId], onDelete: Restrict)
+  deletedBy User?     @relation("PostDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
 
-    comments     Comment[]
-    reactions    PostReaction[]
-    activities   Activity[]
-    pointRecords PointTransaction[]
+  comments     Comment[]
+  reactions    PostReaction[]
+  activities   Activity[]
+  pointRecords PointTransaction[]
 
-    @@index([communityId, status, createdAt(sort: Desc)])
-    @@index([authorId, createdAt(sort: Desc)])
-    @@index([topicId, createdAt(sort: Desc)])
-    @@map("posts")
+  @@index([communityId, status, createdAt(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@index([topicId, createdAt(sort: Desc)])
+  @@map("posts")
 }
 
 model Comment {
-    id             String        @id @default(uuid()) @db.Uuid
-    postId         String        @map("post_id") @db.Uuid
-    authorId       String        @map("author_id") @db.Uuid
-    body           String
-    status         ContentStatus @default(PUBLISHED)
-    createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
-    updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
-    deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz(6)
-    deletedById    String?       @map("deleted_by_id") @db.Uuid
-    deletionReason String?       @map("deletion_reason")
+  id             String        @id @default(uuid()) @db.Uuid
+  postId         String        @map("post_id") @db.Uuid
+  authorId       String        @map("author_id") @db.Uuid
+  body           String
+  status         ContentStatus @default(PUBLISHED)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.Timestamptz(6)
+  deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz(6)
+  deletedById    String?       @map("deleted_by_id") @db.Uuid
+  deletionReason String?       @map("deletion_reason")
 
-    post      Post  @relation(fields: [postId], references: [id], onDelete: Restrict)
-    author    User  @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-    deletedBy User? @relation("CommentDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
+  post      Post  @relation(fields: [postId], references: [id], onDelete: Restrict)
+  author    User  @relation("CommentAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  deletedBy User? @relation("CommentDeleter", fields: [deletedById], references: [id], onDelete: SetNull)
 
-    activities Activity[]
+  activities Activity[]
 
-    @@index([postId, status, createdAt])
-    @@index([authorId, createdAt(sort: Desc)])
-    @@map("comments")
+  @@index([postId, status, createdAt])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@map("comments")
 }
 
 model PostReaction {
-    postId       String       @map("post_id") @db.Uuid
-    userId       String       @map("user_id") @db.Uuid
-    reactionType ReactionType @default(LIKE) @map("reaction_type")
-    createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
+  postId       String       @map("post_id") @db.Uuid
+  userId       String       @map("user_id") @db.Uuid
+  reactionType ReactionType @default(LIKE) @map("reaction_type")
+  createdAt    DateTime     @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post Post @relation(fields: [postId], references: [id], onDelete: Restrict)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@id([postId, userId, reactionType])
-    @@index([userId, createdAt(sort: Desc)])
-    @@map("post_reactions")
+  @@id([postId, userId, reactionType])
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("post_reactions")
 }
 
 model Announcement {
-    id          String             @id @default(uuid()) @db.Uuid
-    communityId String             @map("community_id") @db.Uuid
-    authorId    String             @map("author_id") @db.Uuid
-    title       String             @db.VarChar(200)
-    body        String
-    status      AnnouncementStatus @default(DRAFT)
-    publishedAt DateTime?          @map("published_at") @db.Timestamptz(6)
-    createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
-    updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
+  id          String             @id @default(uuid()) @db.Uuid
+  communityId String             @map("community_id") @db.Uuid
+  authorId    String             @map("author_id") @db.Uuid
+  title       String             @db.VarChar(200)
+  body        String
+  status      AnnouncementStatus @default(DRAFT)
+  publishedAt DateTime?          @map("published_at") @db.Timestamptz(6)
+  createdAt   DateTime           @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime           @updatedAt @map("updated_at") @db.Timestamptz(6)
 
-    community Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    author    User               @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
-    reads     AnnouncementRead[]
+  community Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  author    User               @relation("AnnouncementAuthor", fields: [authorId], references: [id], onDelete: Restrict)
+  reads     AnnouncementRead[]
 
-    @@index([communityId, status, publishedAt(sort: Desc)])
-    @@index([authorId, createdAt(sort: Desc)])
-    @@map("announcements")
+  @@index([communityId, status, publishedAt(sort: Desc)])
+  @@index([authorId, createdAt(sort: Desc)])
+  @@map("announcements")
 }
 
 model AnnouncementRead {
-    announcementId String   @map("announcement_id") @db.Uuid
-    userId         String   @map("user_id") @db.Uuid
-    readAt         DateTime @default(now()) @map("read_at") @db.Timestamptz(6)
+  announcementId String   @map("announcement_id") @db.Uuid
+  userId         String   @map("user_id") @db.Uuid
+  readAt         DateTime @default(now()) @map("read_at") @db.Timestamptz(6)
 
-    announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
-    user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcement Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@id([announcementId, userId])
-    @@index([userId, readAt(sort: Desc)])
-    @@map("announcement_reads")
+  @@id([announcementId, userId])
+  @@index([userId, readAt(sort: Desc)])
+  @@map("announcement_reads")
 }
 
 model Activity {
-    id          String       @id @default(uuid()) @db.Uuid
-    communityId String       @map("community_id") @db.Uuid
-    userId      String       @map("user_id") @db.Uuid
-    eventType   ActivityType @map("event_type")
-    postId      String?      @map("post_id") @db.Uuid
-    commentId   String?      @map("comment_id") @db.Uuid
-    occurredAt  DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(6)
-    metadata    Json?        @db.JsonB
+  id          String       @id @default(uuid()) @db.Uuid
+  communityId String       @map("community_id") @db.Uuid
+  userId      String       @map("user_id") @db.Uuid
+  eventType   ActivityType @map("event_type")
+  postId      String?      @map("post_id") @db.Uuid
+  commentId   String?      @map("comment_id") @db.Uuid
+  occurredAt  DateTime     @default(now()) @map("occurred_at") @db.Timestamptz(6)
+  metadata    Json?        @db.JsonB
 
-    community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    user              User               @relation(fields: [userId], references: [id], onDelete: Restrict)
-    post              Post?              @relation(fields: [postId], references: [id], onDelete: SetNull)
-    comment           Comment?           @relation(fields: [commentId], references: [id], onDelete: SetNull)
-    pointTransactions PointTransaction[]
+  community         Community          @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user              User               @relation(fields: [userId], references: [id], onDelete: Restrict)
+  post              Post?              @relation(fields: [postId], references: [id], onDelete: SetNull)
+  comment           Comment?           @relation(fields: [commentId], references: [id], onDelete: SetNull)
+  pointTransactions PointTransaction[]
 
-    @@index([communityId, occurredAt(sort: Desc)])
-    @@index([communityId, userId, occurredAt(sort: Desc)])
-    @@index([communityId, eventType, occurredAt(sort: Desc)])
-    @@index([userId, occurredAt(sort: Desc)])
-    @@map("activities")
+  @@index([communityId, occurredAt(sort: Desc)])
+  @@index([communityId, userId, occurredAt(sort: Desc)])
+  @@index([communityId, eventType, occurredAt(sort: Desc)])
+  @@index([userId, occurredAt(sort: Desc)])
+  @@map("activities")
 }
 
 model PointTransaction {
-    id             String      @id @default(uuid()) @db.Uuid
-    communityId    String      @map("community_id") @db.Uuid
-    userId         String      @map("user_id") @db.Uuid
-    activityId     String?     @map("activity_id") @db.Uuid
-    postId         String?     @map("post_id") @db.Uuid
-    points         Int
-    reason         PointReason
-    idempotencyKey String?     @unique @map("idempotency_key")
-    createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
-    createdById    String?     @map("created_by") @db.Uuid
+  id             String      @id @default(uuid()) @db.Uuid
+  communityId    String      @map("community_id") @db.Uuid
+  userId         String      @map("user_id") @db.Uuid
+  activityId     String?     @map("activity_id") @db.Uuid
+  postId         String?     @map("post_id") @db.Uuid
+  points         Int
+  reason         PointReason
+  idempotencyKey String?     @unique @map("idempotency_key")
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz(6)
+  createdById    String?     @map("created_by") @db.Uuid
 
-    community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    user      User      @relation("PointRecipient", fields: [userId], references: [id], onDelete: Restrict)
-    activity  Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
-    post      Post?     @relation(fields: [postId], references: [id], onDelete: SetNull)
-    createdBy User?     @relation("PointCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User      @relation("PointRecipient", fields: [userId], references: [id], onDelete: Restrict)
+  activity  Activity? @relation(fields: [activityId], references: [id], onDelete: SetNull)
+  post      Post?     @relation(fields: [postId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("PointCreator", fields: [createdById], references: [id], onDelete: SetNull)
 
-    @@index([communityId, userId, createdAt(sort: Desc)])
-    @@index([communityId, createdAt(sort: Desc)])
-    @@map("point_transactions")
+  @@index([communityId, userId, createdAt(sort: Desc)])
+  @@index([communityId, createdAt(sort: Desc)])
+  @@map("point_transactions")
 }
 
 model Badge {
-    id          String   @id @default(uuid()) @db.Uuid
-    code        String   @unique @db.VarChar(60)
-    name        String   @db.VarChar(100)
-    description String   @db.VarChar(300)
-    iconPath    String?  @map("icon_path")
-    criteria    Json     @db.JsonB
-    isActive    Boolean  @default(true) @map("is_active")
-    createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String   @id @default(uuid()) @db.Uuid
+  code        String   @unique @db.VarChar(60)
+  name        String   @db.VarChar(100)
+  description String   @db.VarChar(300)
+  iconPath    String?  @map("icon_path")
+  criteria    Json     @db.JsonB
+  isActive    Boolean  @default(true) @map("is_active")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    awards UserBadge[]
+  awards UserBadge[]
 
-    @@map("badges")
+  @@map("badges")
 }
 
 model UserBadge {
-    id          String   @id @default(uuid()) @db.Uuid
-    userId      String   @map("user_id") @db.Uuid
-    badgeId     String   @map("badge_id") @db.Uuid
-    communityId String?  @map("community_id") @db.Uuid
-    awardedAt   DateTime @default(now()) @map("awarded_at") @db.Timestamptz(6)
-    awardedById String?  @map("awarded_by") @db.Uuid
-    reason      String?
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  badgeId     String   @map("badge_id") @db.Uuid
+  communityId String?  @map("community_id") @db.Uuid
+  awardedAt   DateTime @default(now()) @map("awarded_at") @db.Timestamptz(6)
+  awardedById String?  @map("awarded_by") @db.Uuid
+  reason      String?
 
-    user      User       @relation("BadgeRecipient", fields: [userId], references: [id], onDelete: Cascade)
-    badge     Badge      @relation(fields: [badgeId], references: [id], onDelete: Restrict)
-    community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    awardedBy User?      @relation("BadgeGrantor", fields: [awardedById], references: [id], onDelete: SetNull)
+  user      User       @relation("BadgeRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  badge     Badge      @relation(fields: [badgeId], references: [id], onDelete: Restrict)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  awardedBy User?      @relation("BadgeGrantor", fields: [awardedById], references: [id], onDelete: SetNull)
 
-    @@unique([userId, badgeId, communityId])
-    @@index([userId, awardedAt(sort: Desc)])
-    @@map("user_badges")
+  @@unique([userId, badgeId, communityId])
+  @@index([userId, awardedAt(sort: Desc)])
+  @@map("user_badges")
 }
 
 model Notification {
-    id           String    @id @default(uuid()) @db.Uuid
-    userId       String    @map("user_id") @db.Uuid
-    communityId  String?   @map("community_id") @db.Uuid
-    type         String    @db.VarChar(50)
-    title        String    @db.VarChar(160)
-    body         String    @db.VarChar(500)
-    resourceType String?   @map("resource_type") @db.VarChar(40)
-    resourceId   String?   @map("resource_id") @db.Uuid
-    readAt       DateTime? @map("read_at") @db.Timestamptz(6)
-    createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String    @id @default(uuid()) @db.Uuid
+  userId       String    @map("user_id") @db.Uuid
+  communityId  String?   @map("community_id") @db.Uuid
+  type         String    @db.VarChar(50)
+  title        String    @db.VarChar(160)
+  body         String    @db.VarChar(500)
+  resourceType String?   @map("resource_type") @db.VarChar(40)
+  resourceId   String?   @map("resource_id") @db.Uuid
+  readAt       DateTime? @map("read_at") @db.Timestamptz(6)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
-    community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  user      User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: Cascade)
 
-    @@index([userId, readAt, createdAt(sort: Desc)])
-    @@index([communityId, createdAt(sort: Desc)])
-    @@map("notifications")
+  @@index([userId, readAt, createdAt(sort: Desc)])
+  @@index([communityId, createdAt(sort: Desc)])
+  @@map("notifications")
 }
 
 model AuditLog {
-    id           String   @id @default(uuid()) @db.Uuid
-    actorId      String?  @map("actor_id") @db.Uuid
-    communityId  String?  @map("community_id") @db.Uuid
-    action       String   @db.VarChar(80)
-    resourceType String   @map("resource_type") @db.VarChar(50)
-    resourceId   String?  @map("resource_id") @db.Uuid
-    details      Json?    @db.JsonB
-    createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  id           String   @id @default(uuid()) @db.Uuid
+  actorId      String?  @map("actor_id") @db.Uuid
+  communityId  String?  @map("community_id") @db.Uuid
+  action       String   @db.VarChar(80)
+  resourceType String   @map("resource_type") @db.VarChar(50)
+  resourceId   String?  @map("resource_id") @db.Uuid
+  details      Json?    @db.JsonB
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
-    community Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
+  actor     User?      @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  community Community? @relation(fields: [communityId], references: [id], onDelete: SetNull)
 
-    @@index([communityId, createdAt(sort: Desc)])
-    @@index([actorId, createdAt(sort: Desc)])
-    @@map("audit_logs")
+  @@index([communityId, createdAt(sort: Desc)])
+  @@index([actorId, createdAt(sort: Desc)])
+  @@map("audit_logs")
 }
 
 model EmailVerificationChallenge {
-    id         String    @id @default(uuid()) @db.Uuid
-    userId     String    @map("user_id") @db.Uuid
-    codeHash   String    @map("code_hash") @db.VarChar(64)
-    expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
-    attempts   Int       @default(0)
-    consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
-    createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id         String    @id @default(uuid()) @db.Uuid
+  userId     String    @map("user_id") @db.Uuid
+  codeHash   String    @map("code_hash") @db.VarChar(64)
+  expiresAt  DateTime  @map("expires_at") @db.Timestamptz(6)
+  attempts   Int       @default(0)
+  consumedAt DateTime? @map("consumed_at") @db.Timestamptz(6)
+  createdAt  DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-    @@index([userId, createdAt])
-    @@index([expiresAt])
-    @@map("email_verification_challenges")
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("email_verification_challenges")
 }
 
 model CommunityInvitation {
-    id          String    @id @default(uuid()) @db.Uuid
-    communityId String    @map("community_id") @db.Uuid
-    invitedById String    @map("invited_by") @db.Uuid
-    inviteeId   String    @map("invitee_id") @db.Uuid
-    expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
-    acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(6)
-    revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
-    createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  id          String    @id @default(uuid()) @db.Uuid
+  communityId String    @map("community_id") @db.Uuid
+  invitedById String    @map("invited_by") @db.Uuid
+  inviteeId   String    @map("invitee_id") @db.Uuid
+  expiresAt   DateTime  @map("expires_at") @db.Timestamptz(6)
+  acceptedAt  DateTime? @map("accepted_at") @db.Timestamptz(6)
+  revokedAt   DateTime? @map("revoked_at") @db.Timestamptz(6)
+  createdAt   DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
 
-    community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
-    inviter   User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
-    invitee   User      @relation("InvitationRecipient", fields: [inviteeId], references: [id], onDelete: Cascade)
+  community Community @relation(fields: [communityId], references: [id], onDelete: Cascade)
+  inviter   User      @relation("InvitationSender", fields: [invitedById], references: [id], onDelete: Cascade)
+  invitee   User      @relation("InvitationRecipient", fields: [inviteeId], references: [id], onDelete: Cascade)
 
-    @@index([inviteeId, acceptedAt, expiresAt])
-    @@index([communityId, inviteeId])
-    @@map("community_invitations")
+  @@index([inviteeId, acceptedAt, expiresAt])
+  @@index([communityId, inviteeId])
+  @@map("community_invitations")
+}
+
+model PasswordResetToken {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  tokenHash String    @unique @map("token_hash") @db.VarChar(64)
+  expiresAt DateTime  @map("expires_at") @db.Timestamptz(6)
+  usedAt    DateTime? @map("used_at") @db.Timestamptz(6)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, createdAt])
+  @@index([expiresAt])
+  @@map("password_reset_tokens")
 }

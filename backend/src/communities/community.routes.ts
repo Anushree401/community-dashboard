@@ -190,6 +190,59 @@ communityRouter.get("/", async (req, res) => {
     }
 });
 
+// GET /api/communities/mine
+// Return the authenticated user's active community memberships.
+communityRouter.get("/mine", async (req, res) => {
+    try {
+        const memberships = await prisma.communityMembership.findMany({
+            where: {
+                userId: req.auth!.user.id,
+                status: "ACTIVE",
+            },
+            orderBy: {
+                joinedAt: "desc",
+            },
+            select: {
+                community: {
+                    select: {
+                        id: true,
+                        name: true,
+                        slug: true,
+                        description: true,
+                        visibility: true,
+                        createdAt: true,
+                        updatedAt: true,
+                        createdById: true,
+                        creator: {
+                            select: {
+                                id: true,
+                                displayName: true,
+                            },
+                        },
+                        _count: {
+                            select: {
+                                memberships: {
+                                    where: { status: "ACTIVE" },
+                                },
+                            },
+                        },
+                    },
+                },
+            },
+        });
+
+        return res.json({
+            data: memberships.map((membership) => membership.community),
+        });
+    } catch (error) {
+        console.error("My communities listing failed:", error);
+
+        return res.status(500).json({
+            error: "Unable to load your communities",
+        });
+    }
+});
+
 // GET /api/communities/:id
 communityRouter.get("/:id", async (req, res) => {
     const { id } = req.params;

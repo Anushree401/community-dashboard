@@ -427,4 +427,122 @@ analyticsRouter.get(
     },
 );
 
+
+/**
+ * GET /api/analytics/community/:communityId/active-users?days=30
+ *
+ * Returns daily active users and monthly active users for a community.
+ * Active means the user performed at least one state-changing action:
+ * creating a post, creating a comment, or adding a reaction.
+ *
+ * The current implementation calculates MAU over a rolling 30-day window.
+ */
+analyticsRouter.get(
+    "/community/:communityId/active-users",
+    async (req, res) => {
+        const { communityId } = req.params;
+        const days = Number(req.query.days ?? 30);
+
+        if (!validId(communityId)) {
+            return sendError(res, 400, "Invalid community ID");
+        }
+
+        if (!Number.isInteger(days) || days < 1 || days > 365) {
+            return sendError(res, 400, "Days must be between 1 and 365");
+        }
+
+        const access = await getAnalyticsAccess(
+            communityId,
+            req.auth.userId,
+        );
+
+        if (!access) {
+            return sendError(
+                res,
+                403,
+                "Active community membership required",
+            );
+        }
+
+        if (
+            access.role !== MembershipRole.COMMUNITY_ADMIN &&
+            access.role !== MembershipRole.MODERATOR
+        ) {
+            return sendError(res, 403, "Analytics permission required");
+        }
+
+        const now = new Date();
+
+        const startDate = new Date(now);
+        startDate.setUTCHours(0, 0, 0, 0);
+        startDate.setUTCDate(startDate.getUTCDate() - (days - 1));
+
+        const mauStart = new Date(now);
+        mauStart.setUTCDate(mauStart.getUTCDate() - 30);
+
+        const qualifyingEvents = [
+            "POST_CREATED",
+            "COMMENT_CREATED",
+            "REACTION_ADDED",
+        ] as const;
+
+        const [dailyActivities, monthlyActivities] = await Promise.all([
+            prisma.activity.findMany({
+                where: {
+                    communityId,
+                    eventType: { in: [...qualifyingEvents] },
+                    occurredAt: { gte: startDate, lte: now },
+                },
+                select: {
+                    userId: true,
+                    occurredAt: true,
+                },
+            }),
+            prisma.activity.findMany({
+                where: {
+                    communityId,
+                    eventType: { in: [...qualifyingEvents] },
+                    occurredAt: { gte: mauStart, lte: now },
+                },
+                distinct: ["userId"],
+                select: { userId: true },
+            }),
+        ]);
+
+        const dailyUsers = new Map<string, Set<string>>();
+
+        for (let i = 0; i < days; i++) {
+            const date = new Date(startDate);
+            date.setUTCDate(startDate.getUTCDate() + i);
+            dailyUsers.set(date.toISOString().slice(0, 10), new Set());
+        }
+
+        for (const activity of dailyActivities) {
+            const key = activity.occurredAt.toISOString().slice(0, 10);
+            dailyUsers.get(key)?.add(activity.userId);
+        }
+
+        const dailyActiveUsers = Array.from(
+            dailyUsers,
+            ([date, users]) => ({
+                date,
+                activeUsers: users.size,
+            }),
+        );
+
+        return res.json({
+            communityId,
+            days,
+            dau: dailyActiveUsers[dailyActiveUsers.length - 1]?.activeUsers ?? 0,
+            mau: monthlyActivities.length,
+            dailyActiveUsers,
+            definition: {
+                activeEvents: qualifyingEvents,
+                mauWindowDays: 30,
+            },
+        });
+    },
+);
+
+
 export default analyticsRouter;

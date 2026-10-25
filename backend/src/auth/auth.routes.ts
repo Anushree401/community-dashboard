@@ -9,7 +9,10 @@ import { hash, verify } from "@node-rs/argon2";
 import { z } from "zod";
 import rateLimit from "express-rate-limit";
 import prisma from "../lib/prisma";
-import { sendVerificationOtp } from "../lib/email.js";
+import {
+    sendVerificationOtp,
+    sendPasswordResetEmail,
+} from "../lib/email.js";
 import { requireAuth } from "./auth.middleware.js";
 import { loginSchema, registerSchema } from "./auth.schema.js";
 
@@ -33,6 +36,20 @@ const OTP_RESEND_COOLDOWN_MS = 60 * 1000;
 const OTP_MAX_ATTEMPTS = 5;
 
 const otpSecret = process.env.OTP_HASH_SECRET;
+
+const PASSWORD_RESET_DURATION_MS = 30 * 60 * 1000;
+const PASSWORD_RESET_RESEND_COOLDOWN_MS = 60 * 1000;
+
+const resetPasswordSchema = z.object({
+    email: z.string().trim().email().max(320)
+        .transform((value) => value.toLowerCase()),
+    token: z.string().min(32).max(512),
+    password: z.string().min(12).max(128)
+        .regex(/[A-Z]/, "Password must contain an uppercase letter")
+        .regex(/[a-z]/, "Password must contain a lowercase letter")
+        .regex(/[0-9]/, "Password must contain a number")
+        .regex(/[^A-Za-z0-9]/, "Password must contain a special character"),
+});
 
 if (!otpSecret || !/^[a-fA-F0-9]{64}$/.test(otpSecret)) {
     throw new Error("OTP_HASH_SECRET must be a 64-character hexadecimal secret");
@@ -92,6 +109,220 @@ async function createOtpChallenge(userId: string) {
 
     return { challenge, otp };
 }
+
+authRouter.post("/forgot-password", authLimiter, async (req, res) => {
+    const parsed = emailSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+        return res.status(400).json({
+            error: "Provide a valid email address",
+        });
+    }
+
+    const { email } = parsed.data;
+
+    // Same response whether the account exists or not.
+    const genericResponse = {
+        message: "If an eligible account exists, password reset instructions will be sent.",
+    };
+
+    try {
+        const user = await prisma.user.findUnique({
+            where: { email },
+            select: {
+                id: true,
+                email: true,
+                status: true,
+            },
+        });
+
+        if (!user || user.status !== "ACTIVE") {
+            return res.json(genericResponse);
+        }
+
+        const latestToken = await prisma.passwordResetToken.findFirst({
+            where: {
+                userId: user.id,
+                usedAt: null,
+            },
+            orderBy: { createdAt: "desc" },
+        });
+
+        if (
+            latestToken &&
+            Date.now() - latestToken.createdAt.getTime() <
+            PASSWORD_RESET_RESEND_COOLDOWN_MS
+        ) {
+            return res.json(genericResponse);
+        }
+
+        const token = randomBytes(32).toString("base64url");
+        const tokenHash = createHash("sha256")
+            .update(token)
+            .digest("hex");
+
+        const now = new Date();
+
+        // Invalidate previous unused tokens before creating a replacement.
+        await prisma.$transaction(async (tx) => {
+            await tx.passwordResetToken.updateMany({
+                where: {
+                    userId: user.id,
+                    usedAt: null,
+                },
+                data: { usedAt: now },
+            });
+
+            await tx.passwordResetToken.create({
+                data: {
+                    userId: user.id,
+                    tokenHash,
+                    expiresAt: new Date(
+                        now.getTime() + PASSWORD_RESET_DURATION_MS,
+                    ),
+                },
+            });
+        });
+
+        try {
+            await sendPasswordResetEmail(user.email, token);
+        } catch (emailError) {
+            // Invalidate the token if delivery fails.
+            await prisma.passwordResetToken.updateMany({
+                where: {
+                    tokenHash,
+                    usedAt: null,
+                },
+                data: { usedAt: new Date() },
+            });
+
+            console.error("Password reset email delivery failed:", emailError);
+
+            return res.status(503).json({
+                error: "Unable to send password reset email. Please try again later.",
+            });
+        }
+
+        return res.json(genericResponse);
+    } catch (error) {
+        console.error("Password reset request failed:", error);
+
+        return res.status(500).json({
+            error: "Unable to process password reset request",
+        });
+    }
+});
+
+authRouter.post("/reset-password", authLimiter, async (req, res) => {
+    const parsed = resetPasswordSchema.safeParse(req.body);
+
+    if (!parsed.success) {
+        return res.status(400).json({
+            error: "Invalid password reset data",
+            details: parsed.error.issues.map((issue) => ({
+                field: issue.path.join("."),
+                message: issue.message,
+            })),
+        });
+    }
+
+    const { email, token, password } = parsed.data;
+
+    const tokenHash = createHash("sha256")
+        .update(token)
+        .digest("hex");
+
+    try {
+        const now = new Date();
+
+        // Hash the new password with the same Argon2 library used at registration.
+        const passwordHash = await hash(password);
+
+        const result = await prisma.$transaction(async (tx) => {
+            const resetToken = await tx.passwordResetToken.findUnique({
+                where: { tokenHash },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            email: true,
+                            status: true,
+                        },
+                    },
+                },
+            });
+
+            if (
+                !resetToken ||
+                resetToken.user.email !== email ||
+                resetToken.user.status !== "ACTIVE" ||
+                resetToken.usedAt !== null ||
+                resetToken.expiresAt <= now
+            ) {
+                return false;
+            }
+
+            // Conditional update prevents a token from being consumed twice.
+            const consumed = await tx.passwordResetToken.updateMany({
+                where: {
+                    id: resetToken.id,
+                    usedAt: null,
+                    expiresAt: { gt: now },
+                },
+                data: { usedAt: now },
+            });
+
+            if (consumed.count !== 1) {
+                return false;
+            }
+
+            const updatedUser = await tx.user.updateMany({
+                where: {
+                    id: resetToken.user.id,
+                    status: "ACTIVE",
+                },
+                data: { passwordHash },
+            });
+
+            if (updatedUser.count !== 1) {
+                throw new Error("Account status changed during password reset");
+            }
+
+            // Invalidate all existing sessions, including the current session.
+            await tx.session.deleteMany({
+                where: { userId: resetToken.user.id },
+            });
+
+            // Invalidate any other outstanding reset tokens.
+            await tx.passwordResetToken.updateMany({
+                where: {
+                    userId: resetToken.user.id,
+                    id: { not: resetToken.id },
+                    usedAt: null,
+                },
+                data: { usedAt: now },
+            });
+
+            return true;
+        });
+
+        if (!result) {
+            return res.status(400).json({
+                error: "Invalid or expired password reset link",
+            });
+        }
+
+        return res.json({
+            message: "Password reset successfully. Please sign in with your new password.",
+        });
+    } catch (error) {
+        console.error("Password reset failed:", error);
+
+        return res.status(500).json({
+            error: "Unable to reset password",
+        });
+    }
+});
 
 // Register a pending account and send its verification code.
 authRouter.post("/register", authLimiter, async (req, res) => {
