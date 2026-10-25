@@ -1,307 +1,238 @@
-
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ReactNode } from "react";
 import {
-    CartesianGrid,
-    Legend,
-    Line,
-    LineChart,
-    ResponsiveContainer,
-    Tooltip,
-    XAxis,
-    YAxis,
-    Bar,
-    BarChart,
+  LineChart,
+  Line,
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  ResponsiveContainer,
 } from "recharts";
-
 import {
-    getCommunityActiveUsers,
-    getCommunityEngagement,
-    getCommunityMembershipGrowth,
-    getCommunityOverview,
-    type ActiveUsersResponse,
-    type CommunityOverview,
-    type EngagementResponse,
-    type MembershipGrowthResponse,
+  getCommunityOverview,
+  getCommunityMembershipGrowth,
+  getCommunityEngagement,
+  getCommunityActiveUsers,
+  getCommunityTopPosts,
+  type CommunityOverview,
+  type MembershipGrowthPoint,
+  type EngagementPoint,
+  type DailyActiveUserPoint,
+  type CommunityTopPost,
 } from "../../lib/api";
 
 type Props = {
-    communityId: string;
+  communityId: string;
 };
 
-type Days = 7 | 30 | 90;
+const RANGE_OPTIONS = [
+  { value: 7, label: "7 days" },
+  { value: 14, label: "14 days" },
+  { value: 30, label: "30 days" },
+  { value: 90, label: "90 days" },
+] as const;
 
-function formatDate(value: string) {
-    return new Date(`${value}T00:00:00Z`).toLocaleDateString(undefined, {
-        day: "numeric",
-        month: "short",
-        timeZone: "UTC",
-    });
-}
+function formatShortDate(value: ReactNode) {
+  if (typeof value !== "string" && typeof value !== "number") {
+    return "";
+  }
 
-function MetricCard({
-    label,
-    value,
-    detail,
-}: {
-    label: string;
-    value: number;
-    detail?: string;
-}) {
-    return (
-        <article className="workspace-stat">
-            <span>{label}</span>
-            <strong>{value.toLocaleString()}</strong>
-            {detail && <small>{detail}</small>}
-        </article>
-    );
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric" });
 }
 
 export default function WorkspaceAnalytics({ communityId }: Props) {
-    const [days, setDays] = useState<Days>(30);
-    const [overview, setOverview] = useState<CommunityOverview | null>(null);
-    const [growth, setGrowth] = useState<MembershipGrowthResponse | null>(null);
-    const [engagement, setEngagement] =
-        useState<EngagementResponse | null>(null);
-    const [activeUsers, setActiveUsers] =
-        useState<ActiveUsersResponse | null>(null);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState("");
+  const [overview, setOverview] = useState<CommunityOverview | null>(null);
+  const [growth, setGrowth] = useState<MembershipGrowthPoint[]>([]);
+  const [engagement, setEngagement] = useState<EngagementPoint[]>([]);
+  const [activeUsers, setActiveUsers] = useState<DailyActiveUserPoint[]>([]);
+  const [dau, setDau] = useState(0);
+  const [mau, setMau] = useState(0);
+  const [topPosts, setTopPosts] = useState<CommunityTopPost[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [days, setDays] = useState(30);
 
-    const loadAnalytics = useCallback(async () => {
-        setLoading(true);
-        setError("");
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+    setError("");
 
-        try {
-            const [overviewResult, growthResult, engagementResult, activeResult] =
-                await Promise.all([
-                    getCommunityOverview(communityId),
-                    getCommunityMembershipGrowth(communityId, days),
-                    getCommunityEngagement(communityId, days),
-                    getCommunityActiveUsers(communityId, days),
-                ]);
+    try {
+      const [
+        overviewResult,
+        growthResult,
+        engagementResult,
+        activeResult,
+        topPostResult,
+      ] = await Promise.all([
+        getCommunityOverview(communityId),
+        getCommunityMembershipGrowth(communityId, days),
+        getCommunityEngagement(communityId, days),
+        getCommunityActiveUsers(communityId, days),
+        getCommunityTopPosts(communityId, 10),
+      ]);
 
-            setOverview(overviewResult);
-            setGrowth(growthResult);
-            setEngagement(engagementResult);
-            setActiveUsers(activeResult);
-        } catch (err) {
-            setError(
-                err instanceof Error
-                    ? err.message
-                    : "Unable to load community analytics.",
-            );
-        } finally {
-            setLoading(false);
-        }
-    }, [communityId, days]);
-
-    useEffect(() => {
-        void loadAnalytics();
-    }, [loadAnalytics]);
-
-    if (loading) {
-        return (
-            <section className="workspace-section">
-                <h2>Community analytics</h2>
-                <p role="status">Loading analytics…</p>
-            </section>
-        );
+      setOverview(overviewResult);
+      setGrowth(growthResult.growth ?? []);
+      setEngagement(engagementResult.engagement ?? []);
+      setActiveUsers(activeResult.dailyActiveUsers ?? []);
+      setDau(activeResult.dau ?? 0);
+      setMau(activeResult.mau ?? 0);
+      setTopPosts(topPostResult.topPosts ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not load analytics data.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
+  }, [communityId, days]);
 
-    if (error) {
-        return (
-            <section className="workspace-section">
-                <h2>Community analytics</h2>
-                <p className="workspace-error" role="alert">{error}</p>
-                <button
-                    type="button"
-                    className="secondary-button"
-                    onClick={() => void loadAnalytics()}
-                >
-                    Retry
-                </button>
-            </section>
-        );
-    }
+  useEffect(() => {
+    void load();
+  }, [load]);
 
-    const engagementData = engagement?.engagement ?? [];
-    const growthData = growth?.growth ?? [];
-    const activeData = activeUsers?.dailyActiveUsers ?? [];
-
+  if (loading) {
     return (
-        <section className="workspace-section workspace-analytics">
-            <div className="workspace-section-heading">
-                <div>
-                    <h2>Community analytics</h2>
-                    <p>Measure activity, participation, and community growth.</p>
-                </div>
-
-                <label>
-                    Reporting period{" "}
-                    <select
-                        value={days}
-                        onChange={(event) => setDays(Number(event.target.value) as Days)}
-                    >
-                        <option value={7}>Last 7 days</option>
-                        <option value={30}>Last 30 days</option>
-                        <option value={90}>Last 90 days</option>
-                    </select>
-                </label>
-            </div>
-
-            <div className="workspace-stats">
-                <MetricCard
-                    label="Total members"
-                    value={overview?.members.total ?? 0}
-                />
-                <MetricCard
-                    label="Active members"
-                    value={overview?.members.active ?? 0}
-                />
-                <MetricCard
-                    label="Published posts"
-                    value={overview?.content.publishedPosts ?? 0}
-                />
-                <MetricCard
-                    label="Comments"
-                    value={overview?.content.comments ?? 0}
-                />
-                <MetricCard
-                    label="Reactions"
-                    value={overview?.content.reactions ?? 0}
-                />
-                <MetricCard
-                    label="Net points awarded"
-                    value={overview?.gamification.netPointsAwarded ?? 0}
-                />
-            </div>
-
-            <div className="workspace-stats">
-                <MetricCard
-                    label="Daily active users"
-                    value={activeUsers?.dau ?? 0}
-                    detail="Latest day in the selected reporting period"
-                />
-                <MetricCard
-                    label="Monthly active users"
-                    value={activeUsers?.mau ?? 0}
-                    detail="Rolling 30-day window"
-                />
-            </div>
-
-            <div className="workspace-panel">
-                <h3>Daily engagement</h3>
-                <p>Published posts, comments, and reactions per day.</p>
-
-                {engagementData.length === 0 ? (
-                    <p>No engagement data is available for this period.</p>
-                ) : (
-                    <div className="workspace-chart">
-                        <ResponsiveContainer width="100%" height={300}>
-                            <LineChart data={engagementData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis
-                                    dataKey="date"
-                                    tickFormatter={formatDate}
-                                    minTickGap={24}
-                                />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip labelFormatter={(label) => formatDate(String(label))} />
-                                <Legend />
-                                <Line
-                                    type="monotone"
-                                    dataKey="posts"
-                                    name="Posts"
-                                    stroke="#2563eb"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="comments"
-                                    name="Comments"
-                                    stroke="#16a34a"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
-                                <Line
-                                    type="monotone"
-                                    dataKey="reactions"
-                                    name="Reactions"
-                                    stroke="#9333ea"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-
-            <div className="workspace-panel">
-                <h3>Membership growth</h3>
-                <p>New member additions per day.</p>
-
-                {growthData.length === 0 ? (
-                    <p>No membership growth data is available for this period.</p>
-                ) : (
-                    <div className="workspace-chart">
-                        <ResponsiveContainer width="100%" height={280}>
-                            <BarChart data={growthData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis
-                                    dataKey="date"
-                                    tickFormatter={formatDate}
-                                    minTickGap={24}
-                                />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip labelFormatter={(label) => formatDate(String(label))} />
-                                <Bar
-                                    dataKey="newMembers"
-                                    name="New members"
-                                    fill="#2563eb"
-                                    radius={[4, 4, 0, 0]}
-                                />
-                            </BarChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-
-            <div className="workspace-panel">
-                <h3>Daily active users</h3>
-                <p>
-                    Unique members who created a post, created a comment, or added a
-                    reaction each day.
-                </p>
-
-                {activeData.length === 0 ? (
-                    <p>No active-user data is available for this period.</p>
-                ) : (
-                    <div className="workspace-chart">
-                        <ResponsiveContainer width="100%" height={280}>
-                            <LineChart data={activeData}>
-                                <CartesianGrid strokeDasharray="3 3" />
-                                <XAxis
-                                    dataKey="date"
-                                    tickFormatter={formatDate}
-                                    minTickGap={24}
-                                />
-                                <YAxis allowDecimals={false} />
-                                <Tooltip labelFormatter={(label) => formatDate(String(label))} />
-                                <Line
-                                    type="monotone"
-                                    dataKey="activeUsers"
-                                    name="Active users"
-                                    stroke="#0d9488"
-                                    strokeWidth={2}
-                                    dot={false}
-                                />
-                            </LineChart>
-                        </ResponsiveContainer>
-                    </div>
-                )}
-            </div>
-        </section>
+      <section className="workspace-section">
+        <h2>Analytics</h2>
+        <p role="status">Loading analytics…</p>
+      </section>
     );
+  }
+
+  if (error && !overview) {
+    return (
+      <section className="workspace-section">
+        <h2>Analytics</h2>
+        <p className="workspace-error" role="alert">{error}</p>
+        <button type="button" className="secondary-button" onClick={() => void load()}>
+          Retry
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="workspace-section">
+      <div className="workspace-section-heading">
+        <div>
+          <h2>Analytics</h2>
+          <p>Community metrics and engagement trends.</p>
+        </div>
+        <div className="workspace-inline-actions">
+          <label>
+            <span className="sr-only">Date range</span>
+            <select
+              value={days}
+              onChange={(event) => setDays(Number(event.target.value))}
+              aria-label="Date range"
+            >
+              {RANGE_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </select>
+          </label>
+          <button
+            className="secondary-button"
+            type="button"
+            disabled={refreshing}
+            onClick={() => void load(true)}
+          >
+            {refreshing ? "Refreshing…" : "Refresh"}
+          </button>
+        </div>
+      </div>
+
+      {error && <p className="workspace-error" role="alert">{error}</p>}
+
+      {overview && (
+        <div className="workspace-stats">
+          <article className="workspace-stat"><span>Active members</span><strong>{overview.members.active}</strong></article>
+          <article className="workspace-stat"><span>Published posts</span><strong>{overview.content.publishedPosts}</strong></article>
+          <article className="workspace-stat"><span>Comments</span><strong>{overview.content.comments}</strong></article>
+          <article className="workspace-stat"><span>Reactions</span><strong>{overview.content.reactions}</strong></article>
+          <article className="workspace-stat"><span>DAU</span><strong>{dau}</strong></article>
+          <article className="workspace-stat"><span>MAU (30 day)</span><strong>{mau}</strong></article>
+          <article className="workspace-stat"><span>Net points</span><strong>{overview.gamification.netPointsAwarded}</strong></article>
+          <article className="workspace-stat"><span>Announcements</span><strong>{overview.content.publishedAnnouncements}</strong></article>
+        </div>
+      )}
+
+      <div className="workspace-panel">
+        <h3>Membership growth</h3>
+        {growth.length === 0 ? <p>No membership data for this period.</p> : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={growth}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="date" tickFormatter={formatShortDate} stroke="#888" fontSize={12} />
+              <YAxis allowDecimals={false} stroke="#888" fontSize={12} />
+              <Tooltip labelFormatter={formatShortDate} contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", color: "#fff" }} />
+              <Bar dataKey="newMembers" fill="#888" name="New members" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="workspace-panel">
+        <h3>Engagement trends</h3>
+        {engagement.length === 0 ? <p>No engagement data for this period.</p> : (
+          <ResponsiveContainer width="100%" height={260}>
+            <LineChart data={engagement}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="date" tickFormatter={formatShortDate} stroke="#888" fontSize={12} />
+              <YAxis allowDecimals={false} stroke="#888" fontSize={12} />
+              <Tooltip labelFormatter={formatShortDate} contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", color: "#fff" }} />
+              <Legend />
+              <Line type="monotone" dataKey="posts" stroke="#fff" strokeWidth={2} name="Posts" dot={false} />
+              <Line type="monotone" dataKey="comments" stroke="#aaa" strokeWidth={2} name="Comments" dot={false} />
+              <Line type="monotone" dataKey="reactions" stroke="#666" strokeWidth={2} name="Reactions" dot={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="workspace-panel">
+        <h3>Daily active users</h3>
+        {activeUsers.length === 0 ? <p>No active user data for this period.</p> : (
+          <ResponsiveContainer width="100%" height={260}>
+            <BarChart data={activeUsers}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#333" />
+              <XAxis dataKey="date" tickFormatter={formatShortDate} stroke="#888" fontSize={12} />
+              <YAxis allowDecimals={false} stroke="#888" fontSize={12} />
+              <Tooltip labelFormatter={formatShortDate} contentStyle={{ backgroundColor: "#1a1a1a", border: "1px solid #333", color: "#fff" }} />
+              <Bar dataKey="activeUsers" fill="#aaa" name="Active users" />
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="workspace-panel">
+        <h3>Top posts by reactions</h3>
+        {topPosts.length === 0 ? <p>No posts to rank yet.</p> : (
+          <div className="workspace-table-wrap">
+            <table className="workspace-table">
+              <thead><tr><th>Title</th><th>Author</th><th>Reactions</th><th>Comments</th></tr></thead>
+              <tbody>
+                {topPosts.map((post) => (
+                  <tr key={post.id}>
+                    <td>{post.title}</td>
+                    <td>{post.authorName}</td>
+                    <td>{post.reactionCount}</td>
+                    <td>{post.commentCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }

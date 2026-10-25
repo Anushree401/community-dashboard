@@ -360,15 +360,34 @@ export async function getCommunityActiveUsers(
   );
 }
 
+export type CommunityTopPost = {
+  id: string;
+  title: string;
+  authorName: string;
+  reactionCount: number;
+  commentCount: number;
+  createdAt: string;
+};
+
+export async function getCommunityTopPosts(
+  communityId: string,
+  limit = 10,
+) {
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+  return apiRequest<{ topPosts: CommunityTopPost[] }>(
+    `/api/analytics/community/${encodeURIComponent(communityId)}/top-posts?limit=${safeLimit}`,
+  );
+}
+
 
 export async function getCommunityLeaderboard(communityId: string) {
-  return apiRequest<unknown>(
+  return apiRequest<{ leaderboard: GamificationLeaderboardEntry[] }>(
     `/api/gamification/community/${encodeURIComponent(communityId)}/leaderboard`,
   );
 }
 
 export async function getMyCommunityPoints(communityId: string) {
-  return apiRequest<unknown>(
+  return apiRequest<GamificationPoints>(
     `/api/gamification/community/${encodeURIComponent(communityId)}/points`,
   );
 }
@@ -412,6 +431,67 @@ export async function removeCommunityMember(
     `/api/communities/${encodeURIComponent(communityId)}/members/${encodeURIComponent(userId)}`,
     { method: "DELETE" },
   );
+}
+
+export async function updateCommunityMemberStatus(
+  communityId: string,
+  userId: string,
+  status: "ACTIVE" | "BANNED",
+) {
+  return apiRequest<{
+    membership: {
+      communityId: string;
+      userId: string;
+      role: "COMMUNITY_ADMIN" | "MODERATOR" | "MEMBER";
+      status: "ACTIVE" | "PENDING" | "BANNED";
+    };
+    message: string;
+  }>(
+    `/api/communities/${encodeURIComponent(communityId)}/members/${encodeURIComponent(userId)}/status`,
+    {
+      method: "PATCH",
+      body: JSON.stringify({ status }),
+    },
+  );
+}
+
+/**
+ * Downloads the active-member CSV using the same session token as apiRequest.
+ * The caller should invoke this from a user click, such as an Export button.
+ */
+export async function downloadCommunityMembersCsv(communityId: string) {
+  const token = sessionStorage.getItem("ceh_session_token");
+  const response = await fetch(
+    `${API_BASE_URL}/api/communities/${encodeURIComponent(communityId)}/members/export`,
+    {
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+    },
+  );
+
+  if (!response.ok) {
+    const result: unknown = await response.json().catch(() => null);
+    const message =
+      typeof result === "object" &&
+      result !== null &&
+      "error" in result &&
+      typeof result.error === "string"
+        ? result.error
+        : `Member export failed (${response.status})`;
+    if (response.status === 401) {
+      sessionStorage.removeItem("ceh_session_token");
+    }
+    throw new Error(message);
+  }
+
+  const blob = await response.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+  anchor.href = objectUrl;
+  anchor.download = `community-${communityId}-members.csv`;
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 export async function inviteCommunityMember(
   communityId: string,

@@ -19,6 +19,13 @@ type Props = {
   canManage?: boolean;
 };
 
+function makeIdempotencyKey() {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return `admin-adjustment-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
 export default function WorkspaceGamification({
   communityId,
   canManage = false,
@@ -29,39 +36,44 @@ export default function WorkspaceGamification({
   const [badges, setBadges] = useState<GamificationBadge[]>([]);
   const [awards, setAwards] = useState<GamificationBadgeAward[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState("");
   const [targetUser, setTargetUser] = useState("");
   const [awardPoints, setAwardPoints] = useState("10");
-  const [reason, setReason] = useState("HELPFUL_CONTRIBUTION");
   const [selectedBadge, setSelectedBadge] = useState("");
   const [awardMessage, setAwardMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
     setError("");
 
     try {
-      const [pointResult, leaderboardResult, historyResult, badgeResult, awardResult] =
-        await Promise.all([
-          getMyCommunityPoints(communityId),
-          getCommunityLeaderboard(communityId),
-          getMyCommunityPointHistory(communityId),
-          getCommunityBadges(),
-          getMyCommunityBadges(communityId),
-        ]);
+      const [
+        pointResult,
+        leaderboardResult,
+        historyResult,
+        badgeResult,
+        awardResult,
+      ] = await Promise.all([
+        getMyCommunityPoints(communityId),
+        getCommunityLeaderboard(communityId),
+        getMyCommunityPointHistory(communityId),
+        getCommunityBadges(),
+        getMyCommunityBadges(communityId),
+      ]);
 
-      setPoints(pointResult as GamificationPoints);
-      setLeaderboard(
-        (leaderboardResult as { leaderboard: GamificationLeaderboardEntry[] }).leaderboard ?? [],
-      );
-      setTransactions(historyResult.transactions);
-      setBadges(badgeResult.badges);
-      setAwards(awardResult.awards);
+      setPoints(pointResult);
+      setLeaderboard(leaderboardResult.leaderboard ?? []);
+      setTransactions(historyResult.transactions ?? []);
+      setBadges(badgeResult.badges ?? []);
+      setAwards(awardResult.awards ?? []);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not load gamification data.");
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [communityId]);
 
@@ -71,18 +83,24 @@ export default function WorkspaceGamification({
 
   async function submitPoints(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    const amount = Number(awardPoints);
+    if (!targetUser.trim() || !Number.isInteger(amount) || amount < 1 || amount > 10000) {
+      setAwardMessage("Enter a valid member user ID and a whole-number point amount from 1 to 10,000.");
+      return;
+    }
+
     setSubmitting(true);
     setAwardMessage("");
 
     try {
       await awardCommunityPoints(communityId, {
         userId: targetUser.trim(),
-        points: Number(awardPoints),
-        reason,
-        idempotencyKey: crypto.randomUUID(),
+        points: amount,
+        reason: "ADMIN_ADJUSTMENT",
+        idempotencyKey: makeIdempotencyKey(),
       });
       setAwardMessage("Points awarded successfully.");
-      await load();
+      await load(true);
     } catch (err) {
       setAwardMessage(err instanceof Error ? err.message : "Could not award points.");
     } finally {
@@ -92,6 +110,11 @@ export default function WorkspaceGamification({
 
   async function submitBadge(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!targetUser.trim() || !selectedBadge) {
+      setAwardMessage("Enter a member user ID and select a badge.");
+      return;
+    }
+
     setSubmitting(true);
     setAwardMessage("");
 
@@ -102,7 +125,7 @@ export default function WorkspaceGamification({
         reason: "Awarded by a community manager",
       });
       setAwardMessage("Badge awarded successfully.");
-      await load();
+      await load(true);
     } catch (err) {
       setAwardMessage(err instanceof Error ? err.message : "Could not award badge.");
     } finally {
@@ -111,15 +134,22 @@ export default function WorkspaceGamification({
   }
 
   if (loading) {
-    return <section className="workspace-section"><h2>Gamification</h2><p role="status">Loading points, badges and leaderboard…</p></section>;
+    return (
+      <section className="workspace-section">
+        <h2>Gamification</h2>
+        <p role="status">Loading points, badges and leaderboard…</p>
+      </section>
+    );
   }
 
-  if (error) {
+  if (error && !points) {
     return (
       <section className="workspace-section">
         <h2>Gamification</h2>
         <p className="workspace-error" role="alert">{error}</p>
-        <button type="button" className="secondary-button" onClick={() => void load()}>Retry</button>
+        <button type="button" className="secondary-button" onClick={() => void load()}>
+          Retry
+        </button>
       </section>
     );
   }
@@ -131,8 +161,17 @@ export default function WorkspaceGamification({
           <h2>Gamification</h2>
           <p>Recognize contributions, track your points and celebrate community achievements.</p>
         </div>
-        <button className="secondary-button" type="button" onClick={() => void load()}>Refresh</button>
+        <button
+          className="secondary-button"
+          type="button"
+          disabled={refreshing}
+          onClick={() => void load(true)}
+        >
+          {refreshing ? "Refreshing…" : "Refresh"}
+        </button>
       </div>
+
+      {error && <p className="workspace-error" role="alert">{error}</p>}
 
       <div className="workspace-stats">
         <article className="workspace-stat">
@@ -208,42 +247,63 @@ export default function WorkspaceGamification({
       {canManage && (
         <div className="workspace-panel">
           <h3>Recognize a member</h3>
-          <p>Enter the recipient's user ID. You can find it in member-management data.</p>
+          <p>Enter the recipient's user ID from member-management data.</p>
           <label className="workspace-field">
             Member user ID
-            <input value={targetUser} onChange={(event) => setTargetUser(event.target.value)} required placeholder="UUID of the member" />
+            <input
+              value={targetUser}
+              onChange={(event) => setTargetUser(event.target.value)}
+              required
+              placeholder="UUID of the member"
+            />
           </label>
 
           <form onSubmit={submitPoints} className="workspace-form">
             <h4>Award points</h4>
             <label className="workspace-field">
               Points
-              <input type="number" min="1" max="10000" value={awardPoints} onChange={(event) => setAwardPoints(event.target.value)} required />
+              <input
+                type="number"
+                min="1"
+                max="10000"
+                step="1"
+                value={awardPoints}
+                onChange={(event) => setAwardPoints(event.target.value)}
+                required
+              />
             </label>
-            <label className="workspace-field">
-              Reason
-              <select value={reason} onChange={(event) => setReason(event.target.value)} required>
-                <option value="HELPFUL_CONTRIBUTION">Helpful contribution</option>
-                <option value="POST_CREATED">Post created</option>
-                <option value="COMMENT_CREATED">Comment created</option>
-                <option value="REACTION_RECEIVED">Reaction received</option>
-                <option value="EVENT_PARTICIPATION">Event participation</option>
-                <option value="MANUAL_ADJUSTMENT">Manual adjustment</option>
-              </select>
-            </label>
-            <button className="primary-button" type="submit" disabled={submitting || !targetUser.trim()}>Award points</button>
+            <p>Manual awards are recorded as an admin adjustment.</p>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={submitting || !targetUser.trim()}
+            >
+              Award points
+            </button>
           </form>
 
           <form onSubmit={submitBadge} className="workspace-form">
             <h4>Award a badge</h4>
             <label className="workspace-field">
               Badge
-              <select value={selectedBadge} onChange={(event) => setSelectedBadge(event.target.value)} required>
+              <select
+                value={selectedBadge}
+                onChange={(event) => setSelectedBadge(event.target.value)}
+                required
+              >
                 <option value="">Select a badge</option>
-                {badges.map((badge) => <option value={badge.id} key={badge.id}>{badge.name}</option>)}
+                {badges.map((badge) => (
+                  <option value={badge.id} key={badge.id}>{badge.name}</option>
+                ))}
               </select>
             </label>
-            <button className="primary-button" type="submit" disabled={submitting || !targetUser.trim() || !selectedBadge}>Award badge</button>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={submitting || !targetUser.trim() || !selectedBadge}
+            >
+              Award badge
+            </button>
           </form>
           {awardMessage && <p role="status">{awardMessage}</p>}
         </div>
