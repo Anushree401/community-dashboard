@@ -1,4 +1,3 @@
-
 import { Router, type Response } from "express";
 import { z } from "zod";
 import {
@@ -216,7 +215,7 @@ postRouter.get("/community/:communityId", async (req, res) => {
 
 /**
  * POST /api/posts/community/:communityId
- * Create a post. Requires active community membership.
+ * Create a post and award 5 points.
  */
 postRouter.post("/community/:communityId", async (req, res) => {
     const { communityId } = req.params;
@@ -249,38 +248,60 @@ postRouter.post("/community/:communityId", async (req, res) => {
         });
 
         if (!topic) {
-            return sendError(res, 400, "Topic does not belong to this community");
+            return sendError(
+                res,
+                400,
+                "Topic does not belong to this community",
+            );
         }
     }
 
-    const post = await prisma.post.create({
-        data: {
-            communityId,
-            authorId: req.auth.userId,
-            title: parsed.data.title,
-            body: parsed.data.body,
-            topicId: parsed.data.topicId ?? null,
-        },
-        select: {
-            id: true,
-            communityId: true,
-            authorId: true,
-            topicId: true,
-            title: true,
-            body: true,
-            status: true,
-            createdAt: true,
-            updatedAt: true,
-        },
+    const post = await prisma.$transaction(async (tx) => {
+        const createdPost = await tx.post.create({
+            data: {
+                communityId,
+                authorId: req.auth.userId,
+                title: parsed.data.title,
+                body: parsed.data.body,
+                topicId: parsed.data.topicId ?? null,
+            },
+            select: {
+                id: true,
+                communityId: true,
+                authorId: true,
+                topicId: true,
+                title: true,
+                body: true,
+                status: true,
+                createdAt: true,
+                updatedAt: true,
+            },
+        });
+
+        const activity = await tx.activity.create({
+            data: {
+                communityId,
+                userId: req.auth.userId,
+                eventType: ActivityType.POST_CREATED,
+                postId: createdPost.id,
+            },
+        });
+
+        await tx.pointTransaction.create({
+            data: {
+                communityId,
+                userId: req.auth.userId,
+                activityId: activity.id,
+                postId: createdPost.id,
+                points: 5,
+                reason: "POST_CREATED",
+                idempotencyKey: `activity:${activity.id}`,
+            },
+        });
+
+        return createdPost;
     });
-    await prisma.activity.create({
-        data: {
-            communityId,
-            userId: req.auth.userId,
-            eventType: ActivityType.POST_CREATED,
-            postId: post.id,
-        },
-    });
+
     return res.status(201).json({ post });
 });
 
@@ -342,7 +363,11 @@ postRouter.get("/:postId", async (req, res) => {
         );
 
         if (!access) {
-            return sendError(res, 403, "Active community membership required");
+            return sendError(
+                res,
+                403,
+                "Active community membership required",
+            );
         }
     }
 
@@ -380,7 +405,11 @@ postRouter.patch("/:postId", async (req, res) => {
     }
 
     if (existing.authorId !== req.auth.userId) {
-        return sendError(res, 403, "Only the post author can edit this post");
+        return sendError(
+            res,
+            403,
+            "Only the post author can edit this post",
+        );
     }
 
     const access = await getActiveCommunityAccess(
@@ -402,7 +431,11 @@ postRouter.patch("/:postId", async (req, res) => {
         });
 
         if (!topic) {
-            return sendError(res, 400, "Topic does not belong to this community");
+            return sendError(
+                res,
+                400,
+                "Topic does not belong to this community",
+            );
         }
     }
 
@@ -467,7 +500,11 @@ postRouter.delete("/:postId", async (req, res) => {
     const isAuthor = existing.authorId === req.auth.userId;
 
     if (!isAuthor && !canModerate(access, req.auth.userId)) {
-        return sendError(res, 403, "Insufficient permissions to delete this post");
+        return sendError(
+            res,
+            403,
+            "Insufficient permissions to delete this post",
+        );
     }
 
     await prisma.post.update({
@@ -484,7 +521,7 @@ postRouter.delete("/:postId", async (req, res) => {
 
 /**
  * POST /api/posts/:postId/comments
- * Add a comment to a published post.
+ * Add a comment and award 2 points to the comment author.
  */
 postRouter.post("/:postId/comments", async (req, res) => {
     const { postId } = req.params;
@@ -518,7 +555,11 @@ postRouter.post("/:postId/comments", async (req, res) => {
     );
 
     if (post.community.visibility === "PRIVATE" && !access) {
-        return sendError(res, 403, "Active community membership required");
+        return sendError(
+            res,
+            403,
+            "Active community membership required",
+        );
     }
 
     if (!access) {
@@ -529,37 +570,55 @@ postRouter.post("/:postId/comments", async (req, res) => {
         );
     }
 
-    const comment = await prisma.comment.create({
-        data: {
-            postId,
-            authorId: req.auth.userId,
-            body: parsed.data.body,
-        },
-        select: {
-            id: true,
-            postId: true,
-            authorId: true,
-            body: true,
-            createdAt: true,
-            updatedAt: true,
-            author: {
-                select: {
-                    id: true,
-                    displayName: true,
-                    avatarUrl: true,
+    const comment = await prisma.$transaction(async (tx) => {
+        const createdComment = await tx.comment.create({
+            data: {
+                postId,
+                authorId: req.auth.userId,
+                body: parsed.data.body,
+            },
+            select: {
+                id: true,
+                postId: true,
+                authorId: true,
+                body: true,
+                createdAt: true,
+                updatedAt: true,
+                author: {
+                    select: {
+                        id: true,
+                        displayName: true,
+                        avatarUrl: true,
+                    },
                 },
             },
-        },
+        });
+
+        const activity = await tx.activity.create({
+            data: {
+                communityId: post.communityId,
+                userId: req.auth.userId,
+                eventType: ActivityType.COMMENT_CREATED,
+                postId: post.id,
+                commentId: createdComment.id,
+            },
+        });
+
+        await tx.pointTransaction.create({
+            data: {
+                communityId: post.communityId,
+                userId: req.auth.userId,
+                activityId: activity.id,
+                postId: post.id,
+                points: 2,
+                reason: "COMMENT_CREATED",
+                idempotencyKey: `activity:${activity.id}`,
+            },
+        });
+
+        return createdComment;
     });
-    await prisma.activity.create({
-        data: {
-            communityId: post.communityId,
-            userId: req.auth.userId,
-            eventType: ActivityType.COMMENT_CREATED,
-            postId: post.id,
-            commentId: comment.id,
-        },
-    });
+
     return res.status(201).json({ comment });
 });
 
@@ -608,7 +667,11 @@ postRouter.get("/:postId/comments", async (req, res) => {
         );
 
         if (!access) {
-            return sendError(res, 403, "Active community membership required");
+            return sendError(
+                res,
+                403,
+                "Active community membership required",
+            );
         }
     }
 
@@ -685,7 +748,11 @@ postRouter.patch("/comments/:commentId", async (req, res) => {
     }
 
     if (comment.authorId !== req.auth.userId) {
-        return sendError(res, 403, "Only the comment author can edit it");
+        return sendError(
+            res,
+            403,
+            "Only the comment author can edit it",
+        );
     }
 
     const access = await getActiveCommunityAccess(
@@ -754,7 +821,11 @@ postRouter.delete("/comments/:commentId", async (req, res) => {
     const isAuthor = comment.authorId === req.auth.userId;
 
     if (!isAuthor && !canModerate(access, req.auth.userId)) {
-        return sendError(res, 403, "Insufficient permissions to delete this comment");
+        return sendError(
+            res,
+            403,
+            "Insufficient permissions to delete this comment",
+        );
     }
 
     await prisma.comment.delete({ where: { id: commentId } });
@@ -765,6 +836,7 @@ postRouter.delete("/comments/:commentId", async (req, res) => {
 /**
  * PUT /api/posts/:postId/reaction
  * Set or change the current user's reaction.
+ * Award 1 point to the post author when another user reacts for the first time.
  */
 postRouter.put("/:postId/reaction", async (req, res) => {
     const { postId } = req.params;
@@ -783,6 +855,7 @@ postRouter.put("/:postId/reaction", async (req, res) => {
         select: {
             id: true,
             communityId: true,
+            authorId: true,
             status: true,
         },
     });
@@ -799,6 +872,7 @@ postRouter.put("/:postId/reaction", async (req, res) => {
     if (!access) {
         return sendError(res, 403, "Active community membership required");
     }
+
     const existingReaction = await prisma.postReaction.findUnique({
         where: {
             postId_userId_reactionType: {
@@ -809,6 +883,7 @@ postRouter.put("/:postId/reaction", async (req, res) => {
         },
         select: { postId: true },
     });
+
     const reaction = await prisma.postReaction.upsert({
         where: {
             postId_userId_reactionType: {
@@ -830,16 +905,38 @@ postRouter.put("/:postId/reaction", async (req, res) => {
             createdAt: true,
         },
     });
+
     if (!existingReaction) {
-        await prisma.activity.create({
-            data: {
-                communityId: post.communityId,
-                userId: req.auth.userId,
-                eventType: ActivityType.REACTION_ADDED,
-                postId: post.id,
-            },
+        await prisma.$transaction(async (tx) => {
+            const activity = await tx.activity.create({
+                data: {
+                    communityId: post.communityId,
+                    userId: req.auth.userId,
+                    eventType: ActivityType.REACTION_ADDED,
+                    postId: post.id,
+                },
+            });
+
+            // Stable key prevents repeated/concurrent requests from awarding
+            // more than one point for the same user's reaction to this post.
+            // Self-reactions are recorded as activity but do not earn points.
+            if (post.authorId !== req.auth.userId) {
+                await tx.pointTransaction.createMany({
+                    data: [{
+                        communityId: post.communityId,
+                        userId: post.authorId,
+                        activityId: activity.id,
+                        postId: post.id,
+                        points: 1,
+                        reason: "REACTION_RECEIVED",
+                        idempotencyKey: `reaction:${post.id}:${req.auth.userId}:${parsed.data.reactionType}`,
+                    }],
+                    skipDuplicates: true,
+                });
+            }
         });
     }
+
     return res.json({ reaction });
 });
 
@@ -849,14 +946,20 @@ postRouter.put("/:postId/reaction", async (req, res) => {
  */
 postRouter.delete("/:postId/reaction", async (req, res) => {
     const { postId } = req.params;
-    const parsed = z.nativeEnum(ReactionType).safeParse(req.query.reactionType);
+    const parsed = z.nativeEnum(ReactionType).safeParse(
+        req.query.reactionType,
+    );
 
     if (!validId(postId)) {
         return sendError(res, 400, "Invalid post ID");
     }
 
     if (!parsed.success) {
-        return sendError(res, 400, "A valid reactionType query parameter is required");
+        return sendError(
+            res,
+            400,
+            "A valid reactionType query parameter is required",
+        );
     }
 
     const post = await prisma.post.findUnique({
@@ -895,6 +998,5 @@ postRouter.delete("/:postId/reaction", async (req, res) => {
 
     return res.status(204).send();
 });
-
 
 export default postRouter;

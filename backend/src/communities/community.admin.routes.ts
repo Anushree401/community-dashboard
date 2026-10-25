@@ -30,6 +30,12 @@ const updateRoleSchema = z.object({
     role: z.nativeEnum(MembershipRole),
 });
 
+const updateMembershipStatusSchema = z.object({
+    status: z.nativeEnum(MembershipStatus).refine(
+        (status) => status === MembershipStatus.ACTIVE || status === MembershipStatus.BANNED,
+    ),
+});
+
 const inviteSchema = z.object({
     email: z.string().trim().email().max(320).transform((v) => v.toLowerCase()),
 });
@@ -267,6 +273,163 @@ communityAdminRouter.get("/:id/members", async (req, res) => {
         },
     });
 });
+
+/**
+ * GET /api/communities/:id/members/export
+ * Export active community members as CSV. Only the creator or an active
+ * community admin can export member data.
+ */
+communityAdminRouter.get("/:id/members/export", async (req, res) => {
+    const { id } = req.params;
+
+    if (!isUuid(id)) {
+        return sendError(res, 400, "Invalid community ID");
+    }
+
+    const access = await requireCommunityAdmin(id, req.auth.userId);
+
+    if ("error" in access && typeof access.error === "string") {
+        return sendError(
+            res,
+            access.error === "Community not found" ? 404 : 403,
+            access.error,
+        );
+    }
+
+    const members = await prisma.communityMembership.findMany({
+        where: {
+            communityId: id,
+            status: MembershipStatus.ACTIVE,
+        },
+        orderBy: { joinedAt: "asc" },
+        select: {
+            userId: true,
+            role: true,
+            joinedAt: true,
+            user: {
+                select: {
+                    displayName: true,
+                    email: true,
+                },
+            },
+        },
+    });
+
+    const escapeCsv = (value: unknown): string => {
+        const text = value instanceof Date
+            ? value.toISOString()
+            : String(value ?? "");
+        return `"${text.replace(/"/g, '""')}"`;
+    };
+
+    const rows = [
+        ["user_id", "display_name", "email", "role", "joined_at"],
+        ...members.map((member) => [
+            member.userId,
+            member.user.displayName,
+            member.user.email,
+            member.role,
+            member.joinedAt,
+        ]),
+    ];
+
+    const csv = rows.map((row) => row.map(escapeCsv).join(",")).join("\r\n");
+    const filename = `community-${id}-members.csv`;
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
+    res.setHeader("Cache-Control", "no-store");
+
+    return res.status(200).send(csv);
+});
+
+/**
+ * PATCH /api/communities/:id/members/:userId/status
+ * Creator/admin can ban or reinstate members. Only the creator can change
+ * another community admin's status. The creator cannot be banned.
+ * Body: { "status": "ACTIVE" | "BANNED" }
+ */
+communityAdminRouter.patch(
+    "/:id/members/:userId/status",
+    async (req, res) => {
+        const { id, userId } = req.params;
+        const parsed = updateMembershipStatusSchema.safeParse(req.body);
+
+        if (!isUuid(id) || !isUuid(userId)) {
+            return sendError(res, 400, "Invalid community or user ID");
+        }
+
+        if (!parsed.success) {
+            return sendError(res, 400, "Membership status must be ACTIVE or BANNED");
+        }
+
+        const access = await requireCommunityAdmin(id, req.auth.userId);
+
+        if ("error" in access && typeof access.error === "string") {
+            return sendError(
+                res,
+                access.error === "Community not found" ? 404 : 403,
+                access.error,
+            );
+        }
+
+        const actorIsCreator = access.community.createdById === req.auth.userId;
+
+        if (userId === access.community.createdById) {
+            return sendError(res, 403, "The community creator's status cannot be changed");
+        }
+
+        const target = await prisma.communityMembership.findUnique({
+            where: {
+                communityId_userId: {
+                    communityId: id,
+                    userId,
+                },
+            },
+            select: {
+                communityId: true,
+                userId: true,
+                role: true,
+                status: true,
+            },
+        });
+
+        if (!target) {
+            return sendError(res, 404, "Community membership not found");
+        }
+
+        if (target.role === MembershipRole.COMMUNITY_ADMIN && !actorIsCreator) {
+            return sendError(res, 403, "Only the creator can change another community admin's status");
+        }
+
+        if (target.status === parsed.data.status) {
+            return res.json({ membership: target, message: "Membership status is already set" });
+        }
+
+        const updated = await prisma.communityMembership.update({
+            where: {
+                communityId_userId: {
+                    communityId: id,
+                    userId,
+                },
+            },
+            data: { status: parsed.data.status },
+            select: {
+                communityId: true,
+                userId: true,
+                role: true,
+                status: true,
+            },
+        });
+
+        return res.json({
+            membership: updated,
+            message: parsed.data.status === MembershipStatus.BANNED
+                ? "Member suspended"
+                : "Member reinstated",
+        });
+    },
+);
 
 /**
  * PATCH /api/communities/:id/members/:userId/role

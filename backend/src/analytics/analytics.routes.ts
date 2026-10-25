@@ -402,26 +402,23 @@ analyticsRouter.get(
                     },
                 },
             },
-            take: 500,
-            orderBy: { createdAt: "desc" },
+            orderBy: [
+                { reactions: { _count: "desc" } },
+                { comments: { _count: "desc" } },
+                { createdAt: "desc" },
+            ],
+            take: limit,
         });
 
-        const topPosts = posts
-            .sort(
-                (a, b) =>
-                    b._count.reactions - a._count.reactions ||
-                    b._count.comments - a._count.comments,
-            )
-            .slice(0, limit)
-            .map((post) => ({
-                id: post.id,
-                title: post.title,
-                authorId: post.authorId,
-                authorName: post.author.displayName,
-                createdAt: post.createdAt,
-                reactionCount: post._count.reactions,
-                commentCount: post._count.comments,
-            }));
+        const topPosts = posts.map((post) => ({
+            id: post.id,
+            title: post.title,
+            authorId: post.authorId,
+            authorName: post.author.displayName,
+            createdAt: post.createdAt,
+            reactionCount: post._count.reactions,
+            commentCount: post._count.comments,
+        }));
 
         return res.json({ topPosts });
     },
